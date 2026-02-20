@@ -18,18 +18,53 @@ export default function ScheduleList() {
     return today.toISOString().split('T')[0];
   });
   const [dateModal, setDateModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
   const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
-  const addSchedule = () => {
-    const newSchedule: ScheduleItem = {
-      id: Date.now().toString(),
-      time: `${selectedDate} ${selectedHour}:${selectedMinute}`,
-      action: selectedAction,
-    };
-    setSchedules([...schedules, newSchedule]);
+  const saveSchedule = () => {
+    if (editingId) {
+      // Update existing schedule
+      setSchedules(schedules.map(s => 
+        s.id === editingId 
+          ? { ...s, time: `${selectedDate} ${selectedHour}:${selectedMinute}`, action: selectedAction }
+          : s
+      ));
+      setEditingId(null);
+    } else {
+      // Add new schedule
+      const newSchedule: ScheduleItem = {
+        id: Date.now().toString(),
+        time: `${selectedDate} ${selectedHour}:${selectedMinute}`,
+        action: selectedAction,
+      };
+      setSchedules([...schedules, newSchedule]);
+    }
     setModalVisible(false);
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setSelectedHour('07');
+    setSelectedMinute('00');
+    setSelectedAction('on');
+    setSelectedDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const openEditModal = (schedule: ScheduleItem) => {
+    const [date, time] = schedule.time.split(' ');
+    const [hour, minute] = time.split(':');
+    setSelectedDate(date);
+    setSelectedHour(hour);
+    setSelectedMinute(minute);
+    setSelectedAction(schedule.action);
+    setEditingId(schedule.id);
+    setModalVisible(true);
+  };
+
+  const deleteSchedule = (id: string) => {
+    setSchedules(schedules.filter(s => s.id !== id));
   };
 
   return (
@@ -38,14 +73,24 @@ export default function ScheduleList() {
         data={schedules}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
-          <View style={styles.item}>
-            <Text style={styles.time}>{item.time}</Text>
-            <Text style={styles.action}>{item.action.toUpperCase()}</Text>
+          <View style={styles.itemContainer}>
+            <View style={styles.item}>
+              <Text style={styles.time}>{item.time}</Text>
+              <Text style={styles.action}>{item.action.toUpperCase()}</Text>
+            </View>
+            <View style={styles.buttonRow}>
+              <Pressable style={styles.editBtn} onPress={() => openEditModal(item)}>
+                <Text style={styles.editBtnText}>✎ Edit</Text>
+              </Pressable>
+              <Pressable style={styles.deleteBtn} onPress={() => deleteSchedule(item.id)}>
+                <Text style={styles.deleteBtnText}>✕ Delete</Text>
+              </Pressable>
+            </View>
           </View>
         )}
         ListEmptyComponent={<Text style={styles.empty}>No schedules yet</Text>}
       />
-      <Pressable style={styles.addBtn} onPress={() => setModalVisible(true)}>
+      <Pressable style={styles.addBtn} onPress={() => { resetForm(); setModalVisible(true); }}>
         <Text style={styles.addText}>+ Add Schedule</Text>
       </Pressable>
 
@@ -53,11 +98,11 @@ export default function ScheduleList() {
         visible={modalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => { setModalVisible(false); setEditingId(null); }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Set Schedule</Text>
+            <Text style={styles.modalTitle}>{editingId ? 'Edit Schedule' : 'Set Schedule'}</Text>
             {/* Date Picker */}
             <View style={{ marginBottom: 16, alignItems: 'center' }}>
               <Text style={styles.pickerLabel}>Date</Text>
@@ -121,11 +166,11 @@ export default function ScheduleList() {
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Pressable style={styles.modalBtn} onPress={() => setModalVisible(false)}>
+              <Pressable style={styles.modalBtn} onPress={() => { setModalVisible(false); setEditingId(null); }}>
                 <Text style={styles.modalBtnText}>Cancel</Text>
               </Pressable>
-              <Pressable style={styles.modalBtn} onPress={addSchedule}>
-                <Text style={styles.modalBtnText}>Add</Text>
+              <Pressable style={styles.modalBtn} onPress={saveSchedule}>
+                <Text style={styles.modalBtnText}>{editingId ? 'Update' : 'Add'}</Text>
               </Pressable>
             </View>
           </View>
@@ -266,13 +311,47 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  itemContainer: {
+    marginBottom: 12,
+  },
   item: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: '#333',
     padding: 12,
     borderRadius: 8,
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  editBtn: {
+    backgroundColor: '#00ff99',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    flex: 1,
+    marginRight: 6,
+    alignItems: 'center',
+  },
+  editBtnText: {
+    color: '#222',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  deleteBtn: {
+    backgroundColor: '#ff4444',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    flex: 1,
+    alignItems: 'center',
+  },
+  deleteBtnText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 13,
   },
   time: {
     color: '#fff',
