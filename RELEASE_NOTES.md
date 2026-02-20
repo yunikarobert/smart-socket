@@ -28,3 +28,8 @@ Development:
 
 Changelog:
 - See git commits for full history.
+
+Recent minor updates (2026-02-20):
+- Added minute-step selector to `ScheduleList` allowing minute intervals of 1, 5, 10, or 15 minutes (previously fixed at 5).
+
+Note: Schedule execution via in-app timeouts runs only while the app is active. For persistent scheduling when the app is closed, consider a server-side scheduler or native background tasks.
