@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, StyleSheet, Pressable, Modal, TouchableOpacity, ScrollView, TextInput } from 'react-native';
 
 interface ScheduleItem {
   id: string;
-  time: string;
+  time: string; // format: YYYY-MM-DD HH:MM
   action: 'on' | 'off';
 }
 
-export default function ScheduleList() {
+interface ScheduleListProps {
+  espIp: string;
+  onComplete?: () => void;
+}
+
+export default function ScheduleList({ espIp, onComplete }: ScheduleListProps) {
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedHour, setSelectedHour] = useState('07');
   const [selectedMinute, setSelectedMinute] = useState('00');
   const [selectedAction, setSelectedAction] = useState<'on' | 'off'>('on');
+  const [minuteStep, setMinuteStep] = useState<number>(5);
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
     return today.toISOString().split('T')[0];
@@ -22,6 +28,44 @@ export default function ScheduleList() {
 
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
   const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+  // manage scheduled timeouts while the app is running
+  const timeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
+
+  const scheduleTimeoutFor = (s: ScheduleItem) => {
+    try {
+      // convert "YYYY-MM-DD HH:MM" to ISO-like string
+      const iso = s.time.replace(' ', 'T') + ':00';
+      const target = new Date(iso);
+      const delta = target.getTime() - Date.now();
+      if (delta <= 0) return; // past time, skip scheduling
+      if (timeoutsRef.current[s.id]) {
+        clearTimeout(timeoutsRef.current[s.id] as ReturnType<typeof setTimeout>);
+      }
+      timeoutsRef.current[s.id] = setTimeout(async () => {
+        try {
+          await fetch(`http://${espIp}/${s.action}`);
+          if (onComplete) onComplete();
+        } catch (e) {
+          console.log('Scheduled action failed', e);
+        } finally {
+          // clear reference
+          timeoutsRef.current[s.id] = null;
+        }
+      }, delta);
+    } catch (e) {
+      console.log('scheduleTimeoutFor error', e);
+    }
+  };
+
+  useEffect(() => {
+    // when schedules change, schedule new ones
+    schedules.forEach(s => scheduleTimeoutFor(s));
+    return () => {
+      // clear all timeouts on unmount
+      Object.values(timeoutsRef.current).forEach(t => { if (t) clearTimeout(t as ReturnType<typeof setTimeout>); });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedules]);
 
   const saveSchedule = () => {
     if (editingId) {
@@ -64,6 +108,11 @@ export default function ScheduleList() {
   };
 
   const deleteSchedule = (id: string) => {
+    // clear scheduled timeout if present
+    if (timeoutsRef.current && timeoutsRef.current[id]) {
+      clearTimeout(timeoutsRef.current[id] as ReturnType<typeof setTimeout>);
+      timeoutsRef.current[id] = null;
+    }
     setSchedules(schedules.filter(s => s.id !== id));
   };
 
@@ -134,6 +183,18 @@ export default function ScheduleList() {
               </Modal>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginBottom: 16 }}>
+              {/* Minute step selector */}
+              <View style={{ alignItems: 'center', marginRight: 12 }}>
+                <Text style={styles.pickerLabel}>Step</Text>
+                <View style={{ flexDirection: 'row' }}>
+                  {[1,5,10,15].map(s => (
+                    <TouchableOpacity key={s} onPress={() => setMinuteStep(s)} style={[styles.stepBtn, minuteStep === s && styles.stepBtnSelected]}>
+                      <Text style={[styles.stepBtnText, minuteStep === s && styles.stepBtnTextSelected]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
               {/* Hour Picker */}
               <View style={{ alignItems: 'center' }}>
                 <Text style={styles.pickerLabel}>Hour</Text>
@@ -149,7 +210,7 @@ export default function ScheduleList() {
               <View style={{ alignItems: 'center' }}>
                 <Text style={styles.pickerLabel}>Minute</Text>
                 <ScrollView style={styles.pickerScrollVertical} showsVerticalScrollIndicator={false}>
-                  {minutes.filter((_, i) => i % 5 === 0).map(m => (
+                  {minutes.filter((_, i) => i % minuteStep === 0).map(m => (
                     <TouchableOpacity key={m} onPress={() => setSelectedMinute(m)}>
                       <Text style={[styles.pickerItem, selectedMinute === m && styles.pickerSelected]}>{m}</Text>
                     </TouchableOpacity>
@@ -225,12 +286,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
     color: '#fff',
     borderRadius: 6,
-    paddingHorizontal: 8,
     paddingVertical: 4,
     fontSize: 16,
     width: 110,
     borderWidth: 1,
     borderColor: '#00ff99',
+  },
+  stepBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginHorizontal: 4,
+    backgroundColor: '#f0f0f0',
+  },
+  stepBtnSelected: {
+    backgroundColor: '#007AFF',
+  },
+  stepBtnText: {
+    color: '#222',
+    fontWeight: '500',
+  },
+  stepBtnTextSelected: {
+    color: '#fff',
   },
   container: {
     width: '100%',
